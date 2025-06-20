@@ -1,0 +1,22 @@
+# Node modules and build outputs
+node_modules
+dist
+pnpm-debug.log
+
+# Optional: ignore local environment files
+.env
+.env.* 
+
+# VCS and IDE stuff
+.git
+.gitignore
+.vscode
+.idea
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# Docker-specific
+Dockerfile
+.dockerignore
