@@ -1,5 +1,16 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { IsObjectIdPipe } from 'nestjs-object-id';
+import { AccessTokenGuard } from 'src/auth/guards';
 import { GetUser } from 'src/common/decorators/getUser.decorator';
 import { AdminGuard } from 'src/common/guards/admin-guard';
 import { BillsManagementService } from './bills-management.service';
@@ -9,7 +20,6 @@ import {
   FilterReadingDto,
   RoomReportQueryDto,
 } from './dtos/readings.dto';
-import { AccessTokenGuard } from 'src/auth/guards';
 
 @UseGuards(AccessTokenGuard)
 @ApiBearerAuth()
@@ -54,7 +64,26 @@ export class BillsManagementController {
 
   @UseGuards(AdminGuard)
   @Post('purchases')
-  async createPurchase(@Body() dto: CreatePurchaseDto) {
-    return this.billsService.createPurchase(dto);
+  async createPurchase(
+    @Body() dto: CreatePurchaseDto,
+    @GetUser('_id') userId: string,
+  ) {
+    return this.billsService.createPurchase(dto, userId);
+  }
+
+  @Patch('purchases/:id')
+  async updatePurchase(
+    @Param('id', IsObjectIdPipe) id: string,
+    @Body() dto: Partial<CreatePurchaseDto>,
+  ) {
+    return this.billsService.updatePurchase(id, dto);
+  }
+
+  @Patch('readings/:id')
+  async updateReading(
+    @Param('id', IsObjectIdPipe) id: string,
+    @Body() dto: Partial<CreateReadingDto>,
+  ) {
+    return this.billsService.updateReading(id, dto);
   }
 }

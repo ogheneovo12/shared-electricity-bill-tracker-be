@@ -19,6 +19,10 @@ export class CreateReadingDto {
   @IsOptional()
   @IsString()
   screenshot?: string;
+
+  @IsOptional()
+  @IsString()
+  note: string;
 }
 
 export class RoomReportQueryDto {

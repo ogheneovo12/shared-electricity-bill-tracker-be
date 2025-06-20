@@ -4,7 +4,7 @@ import { Room } from 'src/rooms/rooms.schema';
 import { User } from 'src/user/schemas/user.schema';
 
 @Schema()
-class Contribution {
+export class Contribution {
   @Prop({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Room',

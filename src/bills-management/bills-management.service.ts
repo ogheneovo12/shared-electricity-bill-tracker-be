@@ -18,7 +18,7 @@ import {
   RoomReportQueryDto,
 } from './dtos/readings.dto';
 import { MeterReading } from './schemas/meter-readings.schema';
-import { Purchase } from './schemas/purchases.schema';
+import { Contribution, Purchase } from './schemas/purchases.schema';
 
 @Injectable()
 export class BillsManagementService {
@@ -79,10 +79,21 @@ export class BillsManagementService {
           return total + (roomContrib ? roomContrib.units : 0);
         }, 0);
 
+        // Calculate total units purchased
+        const amountContributed = purchases.reduce((total, purchase) => {
+          const roomContrib = purchase.contributions.find(
+            (c) => c.room.toString() === room._id.toString(),
+          );
+          return total + (roomContrib ? roomContrib.amount : 0);
+        }, 0);
+
         // Calculate total consumption
         const unitsConsumed =
-          readings.length > 0
-            ? readings[readings.length - 1].value - readings[0].value
+          readings.length > 1
+            ? readings.slice(1).reduce((sum, reading, idx) => {
+                const diff = reading.value - readings[idx].value;
+                return sum + (diff > 0 ? diff : 0); // ignore negative diffs (e.g., rollovers)
+              }, 0)
             : 0;
 
         const balance = unitsPurchased - unitsConsumed;
@@ -104,6 +115,8 @@ export class BillsManagementService {
               : null,
           is_owing: balance < 0,
           amountOwed,
+          unitsPurchasedAmount: unitsPurchased * rate,
+          amountContributed,
         };
       }),
     );
@@ -134,6 +147,54 @@ export class BillsManagementService {
     });
 
     return newReading.save();
+  }
+
+  async updatePurchase(purchaseId: string, dto: Partial<CreatePurchaseDto>) {
+    const purchase = await this.purchaseModel.findById(purchaseId);
+    if (!purchase) throw new BadRequestException('Purchase not found');
+
+    // Optionally: validate room IDs in contributions if updating them
+    if (dto.contributions) {
+      for (const contrib of dto.contributions) {
+        const roomExists = await this.roomService.getRoomById(contrib.room);
+        if (!roomExists) {
+          throw new BadRequestException(`Invalid room ID: ${contrib.room}`);
+        }
+      }
+      purchase.contributions = dto.contributions as unknown as Contribution[];
+    }
+
+    if (dto.total_amount !== undefined)
+      purchase.total_amount = dto.total_amount;
+    if (dto.total_units !== undefined) purchase.total_units = dto.total_units;
+    if (dto.date_purchased !== undefined)
+      purchase.date_purchased = dto.date_purchased;
+
+    // Recalculate rate and units if relevant fields changed
+    if (
+      dto.total_amount !== undefined ||
+      dto.total_units !== undefined ||
+      dto.contributions
+    ) {
+      purchase.rate = purchase.total_amount / purchase.total_units;
+      purchase.contributions.forEach((contribution) => {
+        contribution.units = contribution.amount / purchase.rate;
+      });
+    }
+
+    return purchase.save();
+  }
+
+  async updateReading(readingId: string, dto: Partial<CreateReadingDto>) {
+    const reading = await this.meterReadingModel.findById(readingId);
+    if (!reading) throw new BadRequestException('Reading not found');
+
+    if (dto.value !== undefined) reading.value = dto.value;
+    if (dto.reading_date !== undefined)
+      reading.reading_date = new Date(dto.reading_date);
+    if (dto.screenshot !== undefined) reading.screenshot = dto.screenshot;
+
+    return reading.save();
   }
 
   /**
@@ -195,6 +256,7 @@ export class BillsManagementService {
       balance,
       is_owing: balance < 0,
       amountOwed,
+      unitsPurchasedAmount: unitsPurchased * rate,
     };
   }
 
@@ -234,7 +296,10 @@ export class BillsManagementService {
     return this.purchaseModel
       .find(query)
       .sort({ date_purchased: 1 })
-      .populate('room');
+      .populate({
+        path: 'contributions',
+        populate: { path: 'room', populate: ['current_occupant'] },
+      });
   }
 
   /**

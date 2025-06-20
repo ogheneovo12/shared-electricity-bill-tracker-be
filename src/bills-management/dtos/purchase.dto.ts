@@ -17,6 +17,10 @@ export class ContributionDto {
   @IsNotEmpty()
   @IsNumber()
   amount: number;
+
+  @IsString()
+  @IsOptional()
+  note?: string;
 }
 
 export class CreatePurchaseDto {
@@ -39,6 +43,10 @@ export class CreatePurchaseDto {
   @ValidateNested({ each: true })
   @Type(() => ContributionDto)
   contributions: ContributionDto[];
+
+  @IsString()
+  @IsOptional()
+  note?: string;
 }
 
 export class FilterPurchaseDto {
