@@ -77,13 +77,3 @@ export class Purchase {
 }
 
 export const PurchaseSchema = SchemaFactory.createForClass(Purchase);
-
-PurchaseSchema.pre('validate', function (next) {
-  this.rate = this.total_amount / this.total_units;
-
-  this.contributions.forEach((contribution) => {
-    contribution.units = contribution.amount / this.rate;
-  });
-
-  next();
-});

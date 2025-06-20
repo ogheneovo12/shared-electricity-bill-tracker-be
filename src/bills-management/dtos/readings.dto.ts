@@ -31,3 +31,17 @@ export class RoomReportQueryDto {
   @IsDateString()
   endDate: string;
 }
+
+export class FilterReadingDto {
+  @IsMongoId()
+  @IsOptional()
+  roomId: string;
+
+  @IsDateString()
+  @IsOptional()
+  startDate: string;
+
+  @IsDateString()
+  @IsOptional()
+  endDate: string;
+}

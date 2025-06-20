@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsArray,
   ValidateNested,
+  IsDateString,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -38,4 +39,14 @@ export class CreatePurchaseDto {
   @ValidateNested({ each: true })
   @Type(() => ContributionDto)
   contributions: ContributionDto[];
+}
+
+export class FilterPurchaseDto {
+  @IsDateString()
+  @IsOptional()
+  startDate: string;
+
+  @IsDateString()
+  @IsOptional()
+  endDate: string;
 }

@@ -40,7 +40,7 @@ export class UserService {
   }
 
   async findById(id: string) {
-    return this.userModel.findById(id);
+    return this.userModel.findById(id).populate('currentRoom');
   }
 
   async updateUser(id: string, dto: EditUserDto) {
@@ -56,7 +56,7 @@ export class UserService {
   }
 
   async getAllUsers() {
-    return this.userModel.find();
+    return this.userModel.find().populate('currentRoom');
   }
 
   async toggleUserAdminRole(userId: string) {

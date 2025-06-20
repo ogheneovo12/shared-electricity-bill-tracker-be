@@ -11,8 +11,12 @@ import {
 } from 'src/common/seeds/initial_readings';
 import { RoomsService } from 'src/rooms/rooms.service';
 import { UserService } from 'src/user/user.service';
-import { CreatePurchaseDto } from './dtos/purchase.dto';
-import { CreateReadingDto, RoomReportQueryDto } from './dtos/readings.dto';
+import { CreatePurchaseDto, FilterPurchaseDto } from './dtos/purchase.dto';
+import {
+  CreateReadingDto,
+  FilterReadingDto,
+  RoomReportQueryDto,
+} from './dtos/readings.dto';
 import { MeterReading } from './schemas/meter-readings.schema';
 import { Purchase } from './schemas/purchases.schema';
 
@@ -34,7 +38,7 @@ export class BillsManagementService {
     await this.seedPurchases();
   }
 
-  async createPurchase(dto: CreatePurchaseDto) {
+  async createPurchase(dto: CreatePurchaseDto, recorded_by?: string) {
     // Validate room IDs in contributions
     for (const contrib of dto.contributions) {
       const roomExists = await this.roomService.getRoomById(contrib.room);
@@ -42,7 +46,14 @@ export class BillsManagementService {
         throw new BadRequestException(`Invalid room ID: ${contrib.room}`);
       }
     }
-    const purchase = new this.purchaseModel(dto);
+    const purchase = new this.purchaseModel({ ...dto, recorded_by });
+
+    purchase.rate = purchase.total_amount / purchase.total_units;
+
+    purchase.contributions.forEach((contribution) => {
+      contribution.units = contribution.amount / purchase.rate;
+    });
+
     return purchase.save();
   }
 
@@ -170,6 +181,9 @@ export class BillsManagementService {
 
     // Calculate balance
     const balance = unitsPurchased - unitsConsumed;
+    const lastPurchase = purchases[purchases.length - 1];
+    const rate = lastPurchase ? lastPurchase.rate : 0;
+    const amountOwed = balance < 0 ? Math.abs(balance) * rate : 0;
 
     return {
       startDate,
@@ -179,7 +193,70 @@ export class BillsManagementService {
       unitsConsumed,
       unitsPurchased,
       balance,
+      is_owing: balance < 0,
+      amountOwed,
     };
+  }
+
+  async getReadings(filter: FilterReadingDto) {
+    const query: any = {};
+    if (filter.roomId) {
+      query.room = filter.roomId;
+    }
+    if (filter.startDate || filter.endDate) {
+      query.reading_date = {};
+      if (filter.startDate) {
+        query.reading_date.$gte = new Date(filter.startDate);
+      }
+      if (filter.endDate) {
+        query.reading_date.$lte = new Date(filter.endDate);
+      }
+    }
+    // Optionally, sort by reading_date ascending
+    return this.meterReadingModel
+      .find(query)
+      .sort({ reading_date: -1 })
+      .populate([{ path: 'room', populate: 'current_occupant' }]);
+  }
+
+  async getPurchases(filter: FilterPurchaseDto) {
+    const query: any = {};
+    if (filter.startDate || filter.endDate) {
+      query.date_purchased = {};
+      if (filter.startDate) {
+        query.date_purchased.$gte = new Date(filter.startDate);
+      }
+      if (filter.endDate) {
+        query.date_purchased.$lte = new Date(filter.endDate);
+      }
+    }
+
+    return this.purchaseModel
+      .find(query)
+      .sort({ date_purchased: 1 })
+      .populate('room');
+  }
+
+  /**
+   * Get the most recent meter reading for each room.
+   */
+  async getLastReadingsForAllRooms() {
+    const rooms = await this.roomService.getAllRooms();
+    const lastReadings = await Promise.all(
+      rooms.map(async (room) => {
+        const lastReading = await this.meterReadingModel
+          .findOne({ room: room._id })
+          .sort({ reading_date: -1 })
+          .populate([{ path: 'room', populate: 'current_occupant' }]);
+        return {
+          room: room.name,
+          currentOccupant: room.current_occupant,
+          lastReading: lastReading ? lastReading.value : null,
+          lastReadingDate: lastReading ? lastReading.reading_date : null,
+        };
+      }),
+    );
+    return lastReadings;
   }
 
   async seedReadings() {
@@ -247,17 +324,18 @@ export class BillsManagementService {
     );
 
     for (const purchase of purchaseHistory) {
-      const newPurchase = new this.purchaseModel({
-        date_purchased: purchase.date_purchased,
-        total_amount: purchase.total_amount,
-        total_units: purchase.total_units,
-        recorded_by: admin?._id,
-        contributions: purchase.contributions.map((con) => ({
-          room: roomsMap[con.room],
-          amount: con.amount,
-        })),
-      });
-      await newPurchase.save();
+      await this.createPurchase(
+        {
+          date_purchased: purchase.date_purchased,
+          total_amount: purchase.total_amount,
+          total_units: purchase.total_units,
+          contributions: purchase.contributions.map((con) => ({
+            room: roomsMap[con.room]?.toString(),
+            amount: con.amount,
+          })),
+        },
+        admin?._id?.toString(),
+      );
     }
     await this.appConfigService.setConfig(
       AppConfigKey.SEEDED_INITIAL_PURCHASE,
